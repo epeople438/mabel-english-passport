@@ -1,6 +1,8 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { build } from "esbuild";
+import postcss from "postcss";
+import tailwindcss from "@tailwindcss/postcss";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const outputRoot = resolve(projectRoot, "static-site");
@@ -20,7 +22,12 @@ await build({
   define: { "process.env.NODE_ENV": '"production"' },
 });
 
-await cp(resolve(projectRoot, "app/globals.css"), resolve(outputRoot, "assets/app.css"));
+const sourceCss = await readFile(resolve(projectRoot, "app/globals.css"), "utf8");
+const compiledCss = await postcss([tailwindcss()]).process(sourceCss, {
+  from: resolve(projectRoot, "app/globals.css"),
+  to: resolve(outputRoot, "assets/app.css"),
+});
+await writeFile(resolve(outputRoot, "assets/app.css"), compiledCss.css);
 const html = `<!doctype html>
 <html lang="zh-CN" data-asset-base=".">
   <head>
