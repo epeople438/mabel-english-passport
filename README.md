@@ -5,7 +5,7 @@ An iPad-first role-play English learning PWA made for Mabel. It turns the 75 sce
 ## What is included
 
 - 13 illustrated learning units and 87 complete bilingual scenes
-- 435 pre-generated Microsoft neural-voice clips with normal and slow playback
+- 609 pre-generated Microsoft neural-voice clips covering every dialogue line and key expression
 - Singapore English female voice for Mabel/female roles and male voice for male roles
 - role selection, microphone recording and local playback
 - quick response challenges and passport stamps

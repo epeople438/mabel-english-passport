@@ -106,6 +106,19 @@ function speakMicrosoftClip(
   });
 }
 
+function speakMicrosoftExpression(lessonId: number, expressionIndex: number, text: string) {
+  if (typeof window === "undefined") return;
+  stopSpeech();
+  const src = assetPath(`/audio/expressions/${String(lessonId).padStart(2, "0")}/${expressionIndex + 1}.mp3`);
+  const audio = new Audio(src);
+  activeAudio = audio;
+  audio.onended = () => {
+    if (activeAudio === audio) activeAudio = null;
+  };
+  audio.onerror = () => speakWithSystemVoice(text);
+  audio.play().catch(() => speakWithSystemVoice(text));
+}
+
 function useProgress() {
   const [completed, setCompleted] = useState<Set<number>>(() => {
     if (typeof window === "undefined") return new Set();
@@ -494,9 +507,9 @@ function LessonScreen({ lessonId, completed, onComplete }: { lessonId: number; c
         <div className="expression-card">
           <span className="eyebrow">重点表达</span>
           <h2>把这两句装进旅行口袋</h2>
-          {lesson.expressions.map((expression) => {
+          {lesson.expressions.map((expression, expressionIndex) => {
             const english = expression.split(/[\u3400-\u9fff]/)[0].trim();
-            return <button key={expression} onClick={() => speakWithSystemVoice(english)}><span>▶</span>{expression}</button>;
+            return <button key={expression} onClick={() => speakMicrosoftExpression(lesson.id, expressionIndex, english)}><span>▶</span>{expression}</button>;
           })}
         </div>
 

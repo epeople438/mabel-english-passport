@@ -38,8 +38,10 @@ test("every dialogue line has a Microsoft neural-voice clip", () => {
   const content = readFileSync("app/data/content.ts", "utf8");
   const dialogueLineCount = (original.match(/"speaker":/g) ?? []).length +
     (content.match(/\{ speaker: /g) ?? []).length;
+  const expressionCount = (original.match(/"expressions":/g) ?? []).length * 2 +
+    (content.match(/expressions: \[/g) ?? []).length * 2;
   const manifest = JSON.parse(readFileSync("public/audio/manifest.json", "utf8"));
-  assert.equal(Object.keys(manifest).length, dialogueLineCount);
+  assert.equal(Object.keys(manifest).length, dialogueLineCount + expressionCount);
   for (const clip of Object.values(manifest)) {
     assert.ok(existsSync(`public${clip.src}`), `missing ${clip.src}`);
     assert.match(clip.voice, /^en-SG-(Luna|Wayne)Neural$/);
