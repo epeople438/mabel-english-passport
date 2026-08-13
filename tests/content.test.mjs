@@ -32,3 +32,16 @@ test("all final illustration and PWA assets exist", () => {
   ];
   for (const path of required) assert.ok(existsSync(path), `missing ${path}`);
 });
+
+test("every dialogue line has a Microsoft neural-voice clip", () => {
+  const original = readFileSync("app/data/original-lessons.ts", "utf8");
+  const content = readFileSync("app/data/content.ts", "utf8");
+  const dialogueLineCount = (original.match(/"speaker":/g) ?? []).length +
+    (content.match(/\{ speaker: /g) ?? []).length;
+  const manifest = JSON.parse(readFileSync("public/audio/manifest.json", "utf8"));
+  assert.equal(Object.keys(manifest).length, dialogueLineCount);
+  for (const clip of Object.values(manifest)) {
+    assert.ok(existsSync(`public${clip.src}`), `missing ${clip.src}`);
+    assert.match(clip.voice, /^en-SG-(Luna|Wayne)Neural$/);
+  }
+});

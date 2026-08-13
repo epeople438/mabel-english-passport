@@ -792,6 +792,33 @@ button:disabled {
   box-shadow: var(--shadow-small);
 }
 
+.voice-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.voice-note span {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #e9f5f2;
+  color: var(--teal-dark);
+  font-weight: 850;
+}
+
+.voice-note b {
+  font-weight: 750;
+}
+
+.voice-note i {
+  color: var(--coral);
+  font-style: normal;
+}
+
 .role-picker {
   display: flex;
   align-items: center;

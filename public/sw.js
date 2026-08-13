@@ -1,4 +1,4 @@
-const CACHE_NAME = "mabel-english-v1";
+const CACHE_NAME = "mabel-english-v2";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

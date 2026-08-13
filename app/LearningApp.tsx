@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getLesson,
   getUnit,
@@ -19,6 +19,11 @@ type Screen =
 const storageKey = "mabel-english-progress-v1";
 const lastLessonKey = "mabel-english-last-lesson";
 
+function assetPath(path: string) {
+  if (typeof document !== "undefined" && document.documentElement.dataset.assetBase === ".") return `.${path}`;
+  return path;
+}
+
 function screenFromHash(): Screen {
   if (typeof window === "undefined") return { name: "home" };
   const [kind, rawId] = window.location.hash.replace(/^#\/?/, "").split("/");
@@ -32,15 +37,30 @@ function navigate(path: string) {
   window.location.hash = path;
 }
 
-function speakEnglish(text: string, onEnd?: () => void, slow = false) {
+let activeAudio: HTMLAudioElement | null = null;
+
+function stopSpeech() {
+  if (activeAudio) {
+    activeAudio.pause();
+    activeAudio.currentTime = 0;
+    activeAudio = null;
+  }
+  if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+}
+
+function speakWithSystemVoice(text: string, onEnd?: () => void, slow = false, preferFemale = true) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) {
     onEnd?.();
     return;
   }
-  window.speechSynthesis.cancel();
+  stopSpeech();
   const utterance = new SpeechSynthesisUtterance(text);
   const voices = window.speechSynthesis.getVoices();
+  const genderHints = preferFemale
+    ? ["samantha", "karen", "moira", "tessa", "serena", "ava", "luna"]
+    : ["daniel", "arthur", "oliver", "aaron", "andrew", "wayne"];
   utterance.voice =
+    voices.find((voice) => voice.lang.toLowerCase().startsWith("en-") && genderHints.some((hint) => voice.name.toLowerCase().includes(hint))) ??
     voices.find((voice) => voice.lang.toLowerCase() === "en-sg") ??
     voices.find((voice) => voice.lang.toLowerCase() === "en-gb") ??
     voices.find((voice) => voice.lang.toLowerCase().startsWith("en-")) ??
@@ -51,6 +71,39 @@ function speakEnglish(text: string, onEnd?: () => void, slow = false) {
   utterance.onend = () => onEnd?.();
   utterance.onerror = () => onEnd?.();
   window.speechSynthesis.speak(utterance);
+}
+
+function speakMicrosoftClip(
+  lessonId: number,
+  lineIndex: number,
+  text: string,
+  onEnd?: () => void,
+  slow = false,
+  preferFemale = true,
+) {
+  if (typeof window === "undefined") {
+    onEnd?.();
+    return;
+  }
+  stopSpeech();
+  const src = assetPath(`/audio/${String(lessonId).padStart(2, "0")}/${lineIndex + 1}.mp3`);
+  const audio = new Audio(src);
+  activeAudio = audio;
+  audio.preload = "auto";
+  audio.playbackRate = slow ? 0.76 : 1;
+  const finish = () => {
+    if (activeAudio === audio) activeAudio = null;
+    onEnd?.();
+  };
+  audio.onended = finish;
+  audio.onerror = () => {
+    if (activeAudio === audio) activeAudio = null;
+    speakWithSystemVoice(text, onEnd, slow, preferFemale);
+  };
+  audio.play().catch(() => {
+    if (activeAudio === audio) activeAudio = null;
+    speakWithSystemVoice(text, onEnd, slow, preferFemale);
+  });
 }
 
 function useProgress() {
@@ -133,7 +186,7 @@ function HomeScreen({ completed }: { completed: Set<number> }) {
   return (
     <main className="page-shell">
       <section className="map-hero">
-        <img src="/images/brand/adventure-map.webp" alt="从日常生活出发前往新加坡的英语冒险地图" />
+        <img src={assetPath("/images/brand/adventure-map.webp")} alt="从日常生活出发前往新加坡的英语冒险地图" />
         <div className="map-copy">
           <span className="eyebrow">87 个真实对话任务</span>
           <h1>今天，Mabel 想去哪里开口说英语？</h1>
@@ -173,7 +226,7 @@ function HomeScreen({ completed }: { completed: Set<number> }) {
               onClick={() => navigate(`unit/${unit.id}`)}
               style={{ "--accent": unit.accent } as React.CSSProperties}
             >
-              <img src={unit.image} alt="" />
+              <img src={assetPath(unit.image)} alt="" />
               <div className="unit-card-overlay" />
               <span className="unit-index">{String(unit.id).padStart(2, "0")}</span>
               <span className="unit-icon">{unit.icon}</span>
@@ -202,7 +255,7 @@ function UnitScreen({ unitId, completed }: { unitId: number; completed: Set<numb
     <main className="page-shell">
       <button className="back-button" onClick={() => navigate("")}>← 返回冒险地图</button>
       <section className="unit-hero" style={{ "--accent": unit.accent } as React.CSSProperties}>
-        <img src={unit.image} alt={`${unit.titleZh}章节插画`} />
+        <img src={assetPath(unit.image)} alt={`${unit.titleZh}章节插画`} />
         <div className="unit-hero-copy">
           <span className="eyebrow">Unit {String(unit.id).padStart(2, "0")} · {unit.titleEn}</span>
           <h1>{unit.titleZh}</h1>
@@ -257,7 +310,7 @@ function LessonScreen({ lessonId, completed, onComplete }: { lessonId: number; c
   const [activeLine, setActiveLine] = useState(0);
   const [showChinese, setShowChinese] = useState(true);
   const [mode, setMode] = useState<"listen" | "role">("listen");
-  const speakers = useMemo(() => [...new Set(lesson.dialogue.map((line) => line.speaker))], [lesson]);
+  const speakers = [...new Set(lesson.dialogue.map((line) => line.speaker))];
   const [role, setRole] = useState(speakers.includes("Mabel") ? "Mabel" : speakers[0]);
   const [playing, setPlaying] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -269,28 +322,31 @@ function LessonScreen({ lessonId, completed, onComplete }: { lessonId: number; c
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const line = lesson.dialogue[activeLine];
-  const quizOptions = useMemo(() => quizOptionsFor(lesson), [lesson]);
+  const quizOptions = quizOptionsFor(lesson);
   const quizCorrect = quizChoice === (lesson.dialogue[1]?.en ?? lesson.dialogue[0].en);
 
   useEffect(() => {
     localStorage.setItem(lastLessonKey, String(lessonId));
-    window.speechSynthesis?.cancel();
+    stopSpeech();
     return () => {
-      window.speechSynthesis?.cancel();
+      stopSpeech();
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [lessonId, speakers]);
+  }, [lessonId]);
 
-  const playLine = useCallback((index = activeLine, slow = false, onEnd?: () => void) => {
+  const isFemaleSpeaker = (speaker: string) =>
+    ["Mabel", "Emma", "Mum", "Teacher", "Cashier", "Pharmacist", "Local"].includes(speaker);
+
+  const playLine = (index = activeLine, slow = false, onEnd?: () => void) => {
     setActiveLine(index);
     setPlaying(true);
-    speakEnglish(lesson.dialogue[index].en, () => {
+    speakMicrosoftClip(lesson.id, index, lesson.dialogue[index].en, () => {
       setPlaying(false);
       onEnd?.();
-    }, slow);
-  }, [activeLine, lesson.dialogue]);
+    }, slow, isFemaleSpeaker(lesson.dialogue[index].speaker));
+  };
 
-  const playAll = useCallback(() => {
+  const playAll = () => {
     const playAt = (index: number) => {
       if (index >= lesson.dialogue.length) {
         setPlaying(false);
@@ -298,11 +354,18 @@ function LessonScreen({ lessonId, completed, onComplete }: { lessonId: number; c
       }
       setActiveLine(index);
       setPlaying(true);
-      speakEnglish(lesson.dialogue[index].en, () => playAt(index + 1));
+      speakMicrosoftClip(
+        lesson.id,
+        index,
+        lesson.dialogue[index].en,
+        () => window.setTimeout(() => playAt(index + 1), 180),
+        false,
+        isFemaleSpeaker(lesson.dialogue[index].speaker),
+      );
     };
-    window.speechSynthesis?.cancel();
+    stopSpeech();
     playAt(0);
-  }, [lesson.dialogue]);
+  };
 
   async function startRecording() {
     if (!("MediaRecorder" in window) || !navigator.mediaDevices?.getUserMedia) {
@@ -355,7 +418,7 @@ function LessonScreen({ lessonId, completed, onComplete }: { lessonId: number; c
 
       <section className="role-stage">
         <div className="scene-panel">
-          <img src={unit.image} alt={`${lesson.title}场景插画`} />
+          <img src={assetPath(unit.image)} alt={`${lesson.title}场景插画`} />
           <div className="scene-shade" />
           <div className="scene-title">
             <span>{unit.icon} Unit {unit.id}</span>
@@ -371,6 +434,13 @@ function LessonScreen({ lessonId, completed, onComplete }: { lessonId: number; c
           <div className="mode-tabs" role="tablist" aria-label="练习模式">
             <button className={mode === "listen" ? "active" : ""} onClick={() => setMode("listen")}>① 听懂对话</button>
             <button className={mode === "role" ? "active" : ""} onClick={() => setMode("role")}>② 角色表演</button>
+          </div>
+
+          <div className="voice-note" role="status">
+            <span>♫ 微软自然语音</span>
+            <b>女声 · Mabel</b>
+            <i aria-hidden="true">＋</i>
+            <b>男/女声 · 对话伙伴</b>
           </div>
 
           {mode === "role" && (
@@ -426,14 +496,14 @@ function LessonScreen({ lessonId, completed, onComplete }: { lessonId: number; c
           <h2>把这两句装进旅行口袋</h2>
           {lesson.expressions.map((expression) => {
             const english = expression.split(/[\u3400-\u9fff]/)[0].trim();
-            return <button key={expression} onClick={() => speakEnglish(english)}><span>▶</span>{expression}</button>;
+            return <button key={expression} onClick={() => speakWithSystemVoice(english)}><span>▶</span>{expression}</button>;
           })}
         </div>
 
         <div className="quiz-card">
           <span className="eyebrow">快速挑战</span>
           <h2>听到这句，该怎么回应？</h2>
-          <button className="quiz-prompt" onClick={() => speakEnglish(lesson.dialogue[0].en)}>▶ {lesson.dialogue[0].en}</button>
+          <button className="quiz-prompt" onClick={() => speakMicrosoftClip(lesson.id, 0, lesson.dialogue[0].en, undefined, false, isFemaleSpeaker(lesson.dialogue[0].speaker))}>▶ {lesson.dialogue[0].en}</button>
           <div className="quiz-options">
             {quizOptions.map((option) => (
               <button key={option} className={quizChoice === option ? (quizCorrect ? "correct" : "wrong") : ""} onClick={() => setQuizChoice(option)}>{option}</button>
@@ -471,7 +541,7 @@ export default function LearningApp() {
     const update = () => setScreen(screenFromHash());
     update();
     window.addEventListener("hashchange", update);
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register(assetPath("/sw.js")).catch(() => undefined);
     return () => window.removeEventListener("hashchange", update);
   }, []);
 
