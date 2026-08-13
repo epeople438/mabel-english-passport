@@ -35,6 +35,21 @@ npm start
 
 The main deployment uses OpenAI Sites. A second fully static build is published with GitHub Pages so families can switch networks/CDNs if one route is unavailable.
 
+## Restore after deleting the local copy
+
+The complete application source, illustrations and 609 Microsoft neural-voice MP3 files are stored in this repository. The live GitHub Pages site is stored on the `gh-pages` branch, so deleting a Mac checkout does not stop the website.
+
+To edit the project again on any Mac:
+
+```bash
+git clone https://github.com/epeople438/mabel-english-passport.git
+cd mabel-english-passport
+npm install
+npm run dev
+```
+
+After making changes, validate with `npm test`, `npm run lint`, `npm run build` and `npm run build:static`. Push the source to `main`, then publish the contents of `static-site/` at the root of the `gh-pages` branch. The source PDF is backed up separately in the private `epeople438/mabel-english-source` repository and is intentionally not public.
+
 ## Content ownership
 
 The source PDF and the generated illustrations are personal learning materials for Mabel. The original PDF remains one directory above this project and is intentionally not committed into the application repository.
